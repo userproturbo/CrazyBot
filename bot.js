@@ -1,94 +1,83 @@
 require("dotenv").config();
 const { Telegraf } = require("telegraf");
+const OpenAI = require("openai");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// ======================= ЛОГИ ==========================
+// =============== OPENAI ===============
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
-// ======================= /post ==========================
-bot.command("post", async (ctx) => {
-  const userId = ctx.from.id;
-  const OWNER_ID = Number(process.env.OWNER_ID);
+const MODEL = process.env.OPENAI_MODEL || "gpt-5.1-flash";
 
-  if (userId !== OWNER_ID) {
-    return ctx.reply("❌ У вас нет прав публиковать посты.");
-  }
+// =============== РЕШАЕМ, ОТВЕЧАТЬ ЛИ GPT ===============
+function shouldGPTReply(ctx) {
+  const msg = ctx.message;
+  if (!msg || !msg.text) return false;
 
-  const text = ctx.message.text.replace("/post", "").trim();
+  if (msg.from?.is_bot) return false;
 
-  if (!text) {
-    return ctx.reply(
-      "Напиши текст после команды:\n\n`/post Текст твоего поста`"
-    );
-  }
+  const chatType = ctx.chat.type;
 
+  // В ЛИЧКЕ — всегда отвечаем
+  if (chatType === "private") return true;
+
+  // В группе — если есть упоминание или ответ боту
+  const entities = msg.entities || [];
+  const hasMention = entities.some(
+    (e) => e.type === "mention" || e.type === "text_mention"
+  );
+
+  const isReplyToBot =
+    msg.reply_to_message &&
+    msg.reply_to_message.from &&
+    ctx.botInfo &&
+    msg.reply_to_message.from.id === ctx.botInfo.id;
+
+  return hasMention || isReplyToBot;
+}
+
+// =============== GPT 5.1 ОТВЕТ ===============
+bot.on("text", async (ctx) => {
   try {
-    await ctx.telegram.sendMessage(process.env.CHANNEL_ID, text);
-    ctx.reply("✅ Пост опубликован в канал!");
-  } catch (error) {
-    console.error("Ошибка публикации:", error.description);
-    ctx.reply(
-      "❌ Ошибка публикации. Проверь CHANNEL_ID и полномочия бота в канале."
-    );
+    if (!shouldGPTReply(ctx)) return;
+
+    const userText = ctx.message.text;
+
+    await ctx.sendChatAction("typing");
+
+    const response = await openai.responses.create({
+      model: MODEL,
+      input: [
+        {
+          role: "system",
+          content:
+            "Ты — дерзкий, смешной, слегка токсичный, но дружелюбный бот по имени Крейзи Лось. " +
+            "Общайся на 'ты', используй юмор, подколы, сарказм, но не оскорбляй. " +
+            "Без политики, мата, экстремизма. Пиши живо, коротко или средне."
+        },
+        {
+          role: "user",
+          content: userText
+        }
+      ],
+      max_output_tokens: 300,
+      temperature: 0.9
+    });
+
+    const replyText =
+      response.output_text || "Мне даже нечего сказать… 😅";
+
+    return ctx.reply(replyText, {
+      reply_to_message_id: ctx.message.message_id
+    });
+  } catch (err) {
+    console.error("GPT error:", err);
+    return ctx.reply("⚠️ Ошибка GPT, попробуй позже.");
   }
 });
 
-console.log("DEBUG: OWNER_ID from env =", JSON.stringify(process.env.OWNER_ID));
-bot.command("debug", (ctx) => {
-  ctx.reply(`OWNER_ID: "${process.env.OWNER_ID}"\nYour ID: "${ctx.from.id}"`);
-});
-
-
-// ======================= /chatid ==========================
-bot.command("chatid", (ctx) => {
-  ctx.reply(`Chat ID: ${ctx.chat.id}`);
-});
-
-// ======================= АВТООТВЕТЫ В КОММЕНТАРИЯХ ==========================
-bot.on("message", async (ctx) => {
-  const chatId = ctx.chat.id;
-
-  if (String(chatId) === process.env.THREAD_CHAT_ID) {
-    const msg = ctx.message.text?.toLowerCase() || "";
-
-    if (msg.includes("привет")) {
-      return ctx.reply("Привет! Я присматриваю за комментариями 😎");
-    }
-
-    if (msg.includes("бот")) {
-      return ctx.reply("Кто звал бота? Я тут 🤖🔥");
-    }
-
-    if (msg.includes("дрон") || msg.includes("коптер")) {
-      return ctx.reply("Дроны — это стиль жизни 🚁🔥");
-    }
-
-    const jokes = [
-      "Звучит убедительно… почти 😏",
-      "Записываю в мудрости канала 📚😂",
-      "Интересное мнение… *очень* интересное 😅",
-      "Сильно сказано. Ничего не понятно, но очень интересно 👀, наверное)",
-      "👀"
-    ];
-
-    if (Math.random() < 0.07) {
-      const joke = jokes[Math.floor(Math.random() * jokes.length)];
-      return ctx.reply(joke);
-    }
-  }
-});
-
-// ======================= /start ==========================
-bot.start((ctx) =>
-  ctx.reply(
-    "🔥 Привет! Я CrazyBot — бот канала *Crazy life*.\n\n" +
-    "Команды:\n" +
-    "• /post — публиковать посты в канал (только владелец)\n" +
-    "• /chatid — получить ID чата\n" +
-    "• Автоответы под постами канала уже включены 😎"
-  )
-);
-
-// ======================= ЗАПУСК ==========================
+// =============== ЗАПУСК ===============
 bot.launch();
-console.log("🤖 Бот запущен!");
+console.log("🤖 GPT бот запущен!");
