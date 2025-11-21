@@ -4,6 +4,16 @@ const OpenAI = require("openai");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// твои логи:
+console.log("OWNER_ID:", process.env.OWNER_ID);
+console.log("CHANNEL_ID:", process.env.CHANNEL_ID);
+console.log("THREAD_CHAT_ID:", process.env.THREAD_CHAT_ID);
+
+// 🔹 ОТЛАДОЧНЫЙ ЛОГ ВСЕХ ТЕКСТОВ
+bot.on("text", (ctx) => {
+  console.log("MESSAGE RECEIVED:", ctx.message.text);
+});
+
 // =============== OPENAI ===============
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -11,19 +21,15 @@ const openai = new OpenAI({
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-5.1-flash";
 
-// =============== РЕШАЕМ, ОТВЕЧАТЬ ЛИ GPT ===============
+// =============== shouldGPTReply ===============
 function shouldGPTReply(ctx) {
   const msg = ctx.message;
   if (!msg || !msg.text) return false;
-
   if (msg.from?.is_bot) return false;
 
   const chatType = ctx.chat.type;
-
-  // В ЛИЧКЕ — всегда отвечаем
   if (chatType === "private") return true;
 
-  // В группе — если есть упоминание или ответ боту
   const entities = msg.entities || [];
   const hasMention = entities.some(
     (e) => e.type === "mention" || e.type === "text_mention"
@@ -38,13 +44,12 @@ function shouldGPTReply(ctx) {
   return hasMention || isReplyToBot;
 }
 
-// =============== GPT 5.1 ОТВЕТ ===============
+// =============== GPT-ОТВЕТЫ ===============
 bot.on("text", async (ctx) => {
   try {
     if (!shouldGPTReply(ctx)) return;
 
     const userText = ctx.message.text;
-
     await ctx.sendChatAction("typing");
 
     const response = await openai.responses.create({
@@ -66,18 +71,13 @@ bot.on("text", async (ctx) => {
       temperature: 0.9
     });
 
-    const replyText =
-      response.output_text || "Мне даже нечего сказать… 😅";
+    const replyText = response.output_text || "Мне даже нечего сказать… 😅";
 
     return ctx.reply(replyText, {
       reply_to_message_id: ctx.message.message_id
     });
   } catch (err) {
     console.error("GPT error:", err);
-    return ctx.reply("⚠️ Ошибка GPT, попробуй позже.");
+    return ctx.reply("⚠️ Я тут что-то завис. Попробуй ещё раз позже.");
   }
 });
-
-// =============== ЗАПУСК ===============
-bot.launch();
-console.log("🤖 GPT бот запущен!");
