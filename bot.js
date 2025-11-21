@@ -4,80 +4,84 @@ const OpenAI = require("openai");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// твои логи:
-console.log("OWNER_ID:", process.env.OWNER_ID);
-console.log("CHANNEL_ID:", process.env.CHANNEL_ID);
-console.log("THREAD_CHAT_ID:", process.env.THREAD_CHAT_ID);
-
-// 🔹 ОТЛАДОЧНЫЙ ЛОГ ВСЕХ ТЕКСТОВ
-bot.on("text", (ctx) => {
-  console.log("MESSAGE RECEIVED:", ctx.message.text);
-});
-
-// =============== OPENAI ===============
+// === OPENAI ===
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Модель GPT по умолчанию
 const MODEL = process.env.OPENAI_MODEL || "gpt-5.1-flash";
 
-// =============== shouldGPTReply ===============
+// === Решаем, когда GPT должен отвечать ===
 function shouldGPTReply(ctx) {
   const msg = ctx.message;
-  if (!msg || !msg.text) return false;
+  if (!msg?.text) return false;
+
+  // игнорируем сообщения от других ботов
   if (msg.from?.is_bot) return false;
 
-  const chatType = ctx.chat.type;
-  if (chatType === "private") return true;
+  // 1) В личке — всегда отвечаем
+  if (ctx.chat.type === "private") return true;
 
+  // 2) В группе — если есть упоминание
   const entities = msg.entities || [];
   const hasMention = entities.some(
     (e) => e.type === "mention" || e.type === "text_mention"
   );
 
-  const isReplyToBot =
+  // 3) Если ответили на сообщение бота
+  const repliedToBot =
     msg.reply_to_message &&
     msg.reply_to_message.from &&
-    ctx.botInfo &&
     msg.reply_to_message.from.id === ctx.botInfo.id;
 
-  return hasMention || isReplyToBot;
+  return hasMention || repliedToBot;
 }
 
-// =============== GPT-ОТВЕТЫ ===============
+// === GPT-ответы ===
 bot.on("text", async (ctx) => {
   try {
     if (!shouldGPTReply(ctx)) return;
 
     const userText = ctx.message.text;
+
     await ctx.sendChatAction("typing");
 
-    const response = await openai.responses.create({
+    const completion = await openai.chat.completions.create({
       model: MODEL,
-      input: [
+      messages: [
         {
           role: "system",
           content:
-            "Ты — дерзкий, смешной, слегка токсичный, но дружелюбный бот по имени Крейзи Лось. " +
-            "Общайся на 'ты', используй юмор, подколы, сарказм, но не оскорбляй. " +
-            "Без политики, мата, экстремизма. Пиши живо, коротко или средне."
+            "Ты — Крейзи Лось, дерзкий, смешной, слегка токсичный, но дружелюбный бот. " +
+            "Общайся на 'ты', с юмором и сарказмом. Не используй мат, политику, экстремизм. " +
+            "Отвечай живо, по-человечески."
         },
         {
           role: "user",
           content: userText
         }
       ],
-      max_output_tokens: 300,
-      temperature: 0.9
+      temperature: 0.9,
+      max_tokens: 350
     });
 
-    const replyText = response.output_text || "Мне даже нечего сказать… 😅";
+    const reply = completion.choices[0]?.message?.content || "Эээ… завис 🤯";
 
-    return ctx.reply(replyText, {
+    return ctx.reply(reply, {
       reply_to_message_id: ctx.message.message_id
     });
+
   } catch (err) {
-    console.error("GPT error:", err);
-    return ctx.reply("⚠️ Я тут что-то завис. Попробуй ещё раз позже.");
+    console.error("GPT ERROR:", err);
   }
 });
+
+// === /start ===
+bot.start((ctx) =>
+  ctx.reply("Привет! Я CrazyBot теперь полностью на GPT 😎")
+);
+
+// === запуск ===
+bot.launch();
+console.log("🤖 GPT-бот запущен!");
