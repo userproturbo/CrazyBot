@@ -2,7 +2,7 @@
   "name": "crazy13666bot",
   "version": "1.0.0",
   "description": "",
-  "main": "bot.js",
+  "main": "botGpt.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

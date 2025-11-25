@@ -2,7 +2,7 @@ require("dotenv").config();
 const { Telegraf } = require("telegraf");
 const OpenAI = require("openai");
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const botGpt = new Telegraf(process.env.BOT_TOKEN);
 
 // === OPENAI ===
 const openai = new OpenAI({
@@ -39,7 +39,7 @@ function shouldGPTReply(ctx) {
 }
 
 // === GPT-ответы ===
-bot.on("text", async (ctx) => {
+botGpt.on("text", async (ctx) => {
   try {
     if (!shouldGPTReply(ctx)) return;
 
@@ -53,9 +53,7 @@ bot.on("text", async (ctx) => {
         {
           role: "system",
           content:
-            "Ты — Крейзи Лось, дерзкий, смешной, слегка токсичный, но дружелюбный бот. " +
-            "Общайся на 'ты', с юмором и сарказмом. Не используй мат, политику, экстремизм. " +
-            "Отвечай живо, по-человечески."
+            " "
         },
         {
           role: "user",
@@ -78,10 +76,10 @@ bot.on("text", async (ctx) => {
 });
 
 // === /start ===
-bot.start((ctx) =>
+botGpt.start((ctx) =>
   ctx.reply("Привет! Я CrazyBot теперь полностью на GPT 😎")
 );
 
 // === запуск ===
-bot.launch();
+botGpt.launch();
 console.log("🤖 GPT-бот запущен!");
